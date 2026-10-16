@@ -13,16 +13,16 @@ Affinity files.
 | Affinity | PhotoCraft |
 |---|---|
 | Pages, Publisher spreads | one artboard per spread, spreads side by side 64 px apart |
-| Artboards (`ShpN` with `ABEn`), with name, solid background, any transform | artboards (nested ones as groups with a vector mask) |
+| Artboards (legacy `ABEn`, or current `.af` `phrp`/`aprp` properties, including converted curves), with name, solid background, any transform | artboards (nested ones as groups with a vector mask; rotated/curved boards use their bounding rectangle) |
 | Layers (`Scop`), groups (`Grup`), pass-through or isolated | groups (pass-through or Normal) |
 | Curves (`PCrv`): cubic subpaths, closed flags, live corners (`CnrD`) | shape layers (multi-subpath curves fill even-odd) |
-| Rectangles with corner radii (relative or absolute), ellipses, polygons (smooth too), stars, square stars, pies, triangles, trapezoids | shape layers |
+| Rectangles with corner radii (relative or absolute, locked or per corner) and round or straight corners, ellipses, polygons (smooth too), stars, square stars, pies, triangles, trapezoids, clouds, hearts, cogs, rounded and elliptical callouts, arrows, double stars, tears, crescents, diamonds and circular segments | shape layers |
 | Compound shapes (`Comp`, add and subtract) | one even-odd shape |
 | A shape or curve with children clips them | group with the outline as vector mask, the shape at its bottom |
 | Vector masks (`AdCh` curves and shapes) | vector masks |
 | Pixel masks (`MRst`, attached or as a layer in a group) | layer masks |
 | Solid fills: RGBA, HSLA, CMYK, grey, Lab (D50) | shape fill (converted to RGB) |
-| Linear, elliptical and radial gradients with Affinity's midpoint bias | gradient fills |
+| Linear, elliptical, radial and conical gradients with Affinity's midpoint bias | gradient fills |
 | Strokes: weight, scale with object, dash pattern, alignment, caps, joins, miter limit | shape strokes |
 | Fill layers (`FRst`) | filled rectangles |
 | Artistic and frame text: characters, font family/weight/style, size, tracking, fixed leading, colour, paragraph alignment, first baseline | type layers (rendered with the fonts installed) |
@@ -33,13 +33,12 @@ Affinity files.
 
 Everything else is reported in the import warnings, one line per kind with a count, never
 dropped silently: layer effects, adjustment layers and live filters, brush and pressure strokes,
-transparency gradients, fill opacity, bitmap fills, master pages, conical gradients, special shapes
-(cloud, heart, cog, callouts, arrows…, imported as their bounding ellipse), corner types other than
-round, stars with rounded points, several fills or strokes on one object (one of each is used),
-strokes behind the fill, outlined or scaled text, text fields such as page numbers, frames with
-columns or a curved outline, grey/Lab/32-bit pixels, CMYK and Lab colour (converted to RGB without
-the document's profile), facing pages and the Average, Negation, Reflect, Glow and Erase blend
-modes (as Normal).
+transparency gradients, fill opacity, bitmap fills, master pages, unrecognized
+parametric shapes (imported as their bounding ellipses), corner types other than round or straight, stars with
+rounded points, several fills or strokes on one object (one of each is used), strokes behind the
+fill, outlined or scaled text, text fields such as page numbers, frames with columns or a curved
+outline, grey/Lab/32-bit pixels, CMYK and Lab colour (converted to RGB without the document's
+profile), facing pages and the Average, Negation, Reflect, Glow and Erase blend modes (as Normal).
 
 Opened Affinity documents start without a save path: Save asks for a new copy and never writes
 back over the Affinity file. When the native document can't be read at all, `photocraft-io` opens
@@ -133,8 +132,10 @@ test fixtures, not an exporter.
 
 ## Safety limits
 
-Every size is checked before it is allocated: 256 MiB per archive entry and 1 GiB per import by
-default (`Limits`), a 64 MiB zstd window, 4096 saved revisions, array lengths no longer than the
+Every size is checked before it is allocated: 256 MiB per archive entry, 1 GiB extracted per import
+and 1 GiB of decoded pixels per import by default (`Limits`: extracted bytes and materialized pixels
+are separate budgets, since a bitmap's declared size costs memory whatever its tiles hold), a 64 MiB
+zstd window, 4096 saved revisions, array lengths no longer than the
 bytes left, 16 777 216 decoded values per document stream (fields and array elements together, counted before
 anything is allocated: a value takes about 40 bytes in memory however few it took in the file; the largest of
 those 189 public documents uses 3.3 million), 384 levels of object nesting, 128 levels of layers, 500 000 layers, four million curve

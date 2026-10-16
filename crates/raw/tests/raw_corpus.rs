@@ -68,7 +68,9 @@ const WANTS: &[Want] = &[
         model: "DSC-RX0",
         size: (4832, 3224),
         cfa: [0, 1, 1, 2],
-        black: &[0.0],
+        // No readable BlackLevel tag: the cRAW fallback of 512 (#1902). The file's darkest
+        // samples sit near 800, so this body's real level is still to be read.
+        black: &[512.0],
         white: [16301.0; 3],
     },
     // The G9's high-resolution mode: a 10480 × 7794 sensor cropped to 10368 × 7776.
@@ -139,6 +141,41 @@ fn developing_produces_the_crop_in_16bit_rgb() {
         // Deterministic: a second develop of the same sensor gives the same pixels.
         let d2 = photocraft_raw::develop_sensor(&s, &photocraft_raw::DevelopOptions::default()).unwrap();
         assert_eq!(d.rgb, d2.rgb, "{}", w.file);
+    }
+}
+
+/// These paired exposures used to decode below their recorded black levels because the
+/// version 0x44 0x40 linearization curve was interpolated across the sensor's full bit range.
+#[test]
+fn modern_lossy_nef_preserves_brightness_at_both_depths() {
+    for (file, black, white) in [("DSC_0751.NEF", 1008.0, 16383.0), ("DSC_0754.NEF", 252.0, 4095.0)] {
+        let bytes = std::fs::read(pixls(file)).unwrap();
+        let s = photocraft_raw::decode(&bytes, &Limits::default()).unwrap();
+        assert_eq!(s.model.as_deref(), Some("NIKON Z 6"));
+        assert_eq!((s.width, s.height), (6064, 4040));
+        assert_eq!(s.black.values, vec![black; 4]);
+        assert!(s.white.iter().all(|v| (*v - white).abs() < 100.0));
+        // The same scene spans deep shadows and bright highlights at either sensor depth.
+        let max = s.data.iter().copied().max().unwrap();
+        assert!(f32::from(max) > white * 0.9, "{file}: maximum {max}");
+        let mean = s.data.iter().map(|v| f64::from(*v)).sum::<f64>() / s.data.len() as f64;
+        assert!(mean > f64::from(black) * 1.5, "{file}: mean {mean}");
+        let d = photocraft_raw::develop_sensor(&s, &photocraft_raw::DevelopOptions::default()).unwrap();
+        assert_eq!((d.width, d.height), (6048, 4024));
+        assert!(d.rgb.iter().copied().max().unwrap() > 32768, "{file}: black development");
+    }
+}
+
+#[test]
+fn packed_nef_opens_full_sensor_and_metadata_crop_at_both_depths() {
+    for (file, first) in [("DSC_0750.NEF", [3539, 3761, 3640, 3904]), ("DSC_0753.NEF", [866, 932, 881, 948])] {
+        let bytes = std::fs::read(pixls(file)).unwrap();
+        let s = photocraft_raw::decode(&bytes, &Limits::default()).unwrap();
+        assert_eq!((s.width, s.height), (6064, 4040));
+        assert_eq!(&s.data[..4], &first);
+        assert_eq!(s.crop, photocraft_raw::Rect::new(8, 8, 6048, 4024));
+        let d = photocraft_raw::develop_sensor(&s, &Default::default()).unwrap();
+        assert_eq!((d.width, d.height), (6048, 4024));
     }
 }
 
